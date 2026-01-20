@@ -161,3 +161,8 @@ cython_debug/
 
 .ruff_cache/
 *.zip
+
+# dataset
+tinystories_data/*
+!tinystories_data/.gitkeep
+!tinystories_data/README.md
