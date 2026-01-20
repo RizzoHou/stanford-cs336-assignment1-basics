@@ -6,7 +6,6 @@ language:
 - en
 ---
 
-NOTICE: you need to download the dataset content in this folder to enable the py scripts to run correctly.
 
 Dataset containing synthetically generated (by GPT-3.5 and GPT-4) short stories that only use a small vocabulary.
 
