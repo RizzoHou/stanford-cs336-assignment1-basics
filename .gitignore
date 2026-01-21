@@ -166,3 +166,5 @@ cython_debug/
 tinystories_data/*
 !tinystories_data/.gitkeep
 !tinystories_data/README.md
+data/*
+!data/.gitkeep
