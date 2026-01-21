@@ -50,12 +50,18 @@ class BPETokenizer(Tokenizer):
                     self.pos_map[current_bytes] = []
                 self.bytes_count[current_bytes] += 1
                 self.pos_map[current_bytes].append((i, j))
-                if self.bytes_count[current_bytes] > max_count:
+                if (
+                    self.bytes_count[current_bytes] > max_count or
+                    self.bytes_count[current_bytes] == max_count and
+                    current_bytes > max_bytes
+                ):
                     max_count = self.bytes_count[current_bytes]
                     max_bytes = current_bytes
         # make the first update to vocab
         # ic(self.bytes_count)
         self.vocab[len(self.vocab)] = max_bytes
+        self.vocab_set = set(self.vocab.values())
+        vocab_max_len = 2
         del self.bytes_count[max_bytes]
         # progressively update vocab until reaching vocab_size
         while len(self.vocab) < self.vocab_size:
@@ -64,15 +70,18 @@ class BPETokenizer(Tokenizer):
             # ic(max_bytes)
             for pos in self.pos_map[max_bytes]:
                 word_bytes = self.words[pos[0]].encode("utf-8")
-                if pos[1] > 0:
-                    new_bytes = word_bytes[pos[1] - 1:pos[1] + max_bytes_len]
+                # the loop range can be smaller
+                for lp in range(max(0, pos[1] - vocab_max_len), pos[1]):
+                    if word_bytes[lp:pos[1]] not in self.vocab_set: continue
+                    new_bytes = word_bytes[lp:pos[1] + max_bytes_len]
                     if new_bytes not in self.bytes_count:
                         self.bytes_count[new_bytes] = 0
                         self.pos_map[new_bytes] = []
                     self.bytes_count[new_bytes] += 1
-                    self.pos_map[new_bytes].append((pos[0], pos[1] - 1))
-                if len(word_bytes) - pos[1] > max_bytes_len:
-                    new_bytes = word_bytes[pos[1]: pos[1] + max_bytes_len + 1]
+                    self.pos_map[new_bytes].append((pos[0], lp))
+                for rp in range(pos[1] + max_bytes_len + 1, min(len(max_bytes), pos[1] + max_bytes_len + vocab_max_len)):
+                    if word_bytes[pos[1] + max_bytes_len:rp] not in self.vocab_set: continue
+                    new_bytes = word_bytes[pos[1]:rp]
                     if new_bytes not in self.bytes_count:
                         self.bytes_count[new_bytes] = 0
                         self.pos_map[new_bytes] = []
@@ -82,9 +91,11 @@ class BPETokenizer(Tokenizer):
             del self.pos_map[max_bytes]
             # find max count and add vocab
             # update max_bytes and delete its bytes_count
-            max_bytes = max(self.bytes_count, key=self.bytes_count.__getitem__, default=None)
+            max_bytes = max(self.bytes_count, key=lambda x: (self.bytes_count[x], x), default=None)
             if max_bytes == None or self.bytes_count[max_bytes] == 0: break
             self.vocab[len(self.vocab)] = max_bytes
+            self.vocab_set.add(max_bytes)
+            vocab_max_len = max(vocab_max_len, len(max_bytes))
             # ic(max_bytes)
             # ic(self.bytes_count[max_bytes])
             del self.bytes_count[max_bytes]
@@ -106,7 +117,7 @@ def cli():
 
 if __name__ == "__main__":
     # cli()
-    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    dataset_path = "./data/bpe-test.txt"
     vocab_size = 256 + 100
     special_tokens = ["<|endoftext|>"]
     # start bpe tokenizer training
