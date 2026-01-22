@@ -2,7 +2,7 @@
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import regex as re
-# from icecream import ic
+from icecream import ic
 import os
 from operator import methodcaller
 
@@ -79,14 +79,56 @@ class BPETokenizer(Tokenizer):
         for id, tok in enumerate(self.vocab):
             self.id_map[tok] = id
     
+    # def _pretokenize(self) -> None:
+    #     with open(self.dataset_path, "r", encoding="utf-8") as data:
+    #         split_pattern = "|".join(map(re.escape, self.special_tokens))
+    #         corpuses = re.split(split_pattern, data.read())
+    #         div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    #         self.words: list[bytes] = []
+    #         for corpus in corpuses:
+    #             self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
     def _pretokenize(self) -> None:
+        self.words: list[bytes] = []
+        split_pattern = "|".join(map(re.escape, self.special_tokens))
+        compiled_split_pattern = re.compile(split_pattern)
+        div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        compiled_div_pattern = re.compile(div_pattern)
+        mini_chunk_size = 1024 * 1024 * 100
         with open(self.dataset_path, "r", encoding="utf-8") as data:
-            split_pattern = "|".join(map(re.escape, self.special_tokens))
-            corpuses = re.split(split_pattern, data.read())
-            div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-            self.words: list[bytes] = []
-            for corpus in corpuses:
-                self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
+            left_part = ""
+            reached_end = False
+            while True:
+                # ic()
+                chunk = data.read(mini_chunk_size)
+                if not chunk and not left_part: break
+                if not chunk: reached_end = True
+                chunk = left_part + chunk
+                # ic(chunk)
+                special_idx = -1
+                selected_special_str = ""
+                for special_token in self.special_tokens:
+                    idx = chunk.rfind(special_token)
+                    if idx > special_idx:
+                        special_idx = idx
+                        selected_special_str = special_token
+                if special_idx != -1:
+                    corpuses = chunk[:special_idx]
+                    left_part = chunk[special_idx + len(selected_special_str):]
+                if special_idx == -1:
+                    if reached_end:
+                        corpuses = chunk
+                        left_part = ""
+                    else:
+                        left_part = chunk
+                        continue
+                # ic(corpuses)
+                # assert corpuses and isinstance(corpuses, str)
+                assert isinstance(corpuses, str)
+                corpuses = compiled_split_pattern.split(corpuses)
+                for corpus in corpuses:
+                    if not corpus: continue
+                    for word_match in compiled_div_pattern.finditer(corpus):
+                        self.words.append(word_match.group().encode("utf-8"))
     
     def _represent_words_by_linkedlists(self) -> None:
         self.id_lists: list[LinkedList] = []
@@ -209,16 +251,15 @@ def run_train_bpe(
 if __name__ == "__main__":
     # cli()
     # dataset_path = "./data/bpe-test.txt"
-    # vocab_size = 2 + 256 + 100
-    # special_tokens = [" ", "\n"]
-    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    # special_tokens = ["<|endoftext|>"]
+    # vocab_size = len(special_tokens) + 256 + 100
+    dataset_path = "./data/TinyStories-test.txt"
     special_tokens = ["<|endoftext|>"]
-    vocab_size = len(special_tokens) + 256 + 1
+    vocab_size = len(special_tokens) + 256 + 10000
     # start bpe tokenizer training
     tokenizer = BPETokenizer(dataset_path, vocab_size, special_tokens)
     tokenizer.train()
     # store training results: vocab and merges
-    # ic(tokenizer.words)
     # ic(tokenizer.merges)
     # ic(len(tokenizer.merges))
     # ic(tokenizer.vocab[len(special_tokens) + 256:])
