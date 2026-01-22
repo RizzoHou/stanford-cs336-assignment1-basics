@@ -68,10 +68,10 @@ class BPETokenizer(Tokenizer):
 
     def _init_vocab(self) -> None:
         self.vocab: list[bytes] = []
-        for tok in self.special_tokens:
-            self.vocab.append(tok.encode("utf-8"))
         for i in range(0, 256):
             self.vocab.append(bytes([i]))
+        for tok in self.special_tokens:
+            self.vocab.append(tok.encode("utf-8"))
     
     def _init_id_map(self) -> None:
         self.id_map: dict[bytes, int] = {}
@@ -79,7 +79,7 @@ class BPETokenizer(Tokenizer):
             self.id_map[tok] = id
     
     def _pretokenize(self) -> None:
-        with open(self.dataset_path, "r") as data:
+        with open(self.dataset_path, "r", encoding="utf-8") as data:
             split_pattern = "|".join(map(re.escape, self.special_tokens))
             corpuses = re.split(split_pattern, data.read())
             div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
