@@ -1,0 +1,31 @@
+Thu Jan 22 16:56:02 2026    bpe.prof
+
+         86995905 function calls (86986079 primitive calls) in 25.526 seconds
+
+   Ordered by: cumulative time
+   List reduced from 1416 to 21 due to restriction <'bpe'>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+        1 0.000021 0.000021 25.525948 25.525948 bpe_tokenizer.py:1(<module>)
+        1 0.001670 0.001670 25.201073 25.201073 bpe_tokenizer.py:159(train)
+        1 13.487083 13.487083 18.690554 18.690554 bpe_tokenizer.py:90(_represent_words_by_linkedlists)
+        1 1.338684 1.338684 4.618684 4.618684 bpe_tokenizer.py:116(_first_count_id_pairs)
+ 22143411 3.975121 0.000000 3.975121 0.000000 bpe_tokenizer.py:18(__init__)
+ 17366310 2.592710 0.000000 3.421529 0.000000 bpe_tokenizer.py:103(_count_in)
+        1 0.011819 0.011819 1.288524 1.288524 bpe_tokenizer.py:81(_pretokenize)
+ 16724410 0.747554 0.000000 0.747554 0.000000 bpe_tokenizer.py:39(append)
+        1 0.357698 0.357698 0.601496 0.601496 bpe_tokenizer.py:125(_add_to_vocab)
+  5419001 0.191063 0.000000 0.191063 0.000000 bpe_tokenizer.py:35(__init__)
+   641900 0.064025 0.000000 0.064025 0.000000 bpe_tokenizer.py:111(_erase)
+   641902 0.038244 0.000000 0.038244 0.000000 bpe_tokenizer.py:45(merge)
+        1 0.000001 0.000001 0.000142 0.000142 bpe_tokenizer.py:99(_get_max_count)
+      932 0.000072 0.000000 0.000072 0.000000 bpe_tokenizer.py:100(<lambda>)
+        1 0.000002 0.000002 0.000049 0.000049 bpe_tokenizer.py:61(__init__)
+        1 0.000027 0.000027 0.000037 0.000037 bpe_tokenizer.py:69(_init_vocab)
+        1 0.000010 0.000010 0.000010 0.000010 bpe_tokenizer.py:76(_init_id_map)
+        1 0.000002 0.000002 0.000002 0.000002 bpe_tokenizer.py:60(BPETokenizer)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer.py:8(Tokenizer)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer.py:34(LinkedList)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer.py:17(Node)
+
+
