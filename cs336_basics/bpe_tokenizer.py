@@ -1,0 +1,225 @@
+from __future__ import annotations
+from abc import ABC, abstractmethod
+import regex as re
+# from icecream import ic
+import os
+from operator import methodcaller
+
+class Tokenizer(ABC):
+    @abstractmethod
+    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str]):
+        pass
+    
+    @abstractmethod
+    def train(self):
+        pass
+
+class Node:
+    def __init__(self, id: int, order: int, word_id: int, pre: Node | None = None, nxt: Node | None = None) -> None:
+        self.id = id
+        self.order = order
+        self.word_id = word_id
+        self.pre = pre
+        self.nxt = nxt
+        self.deprecated = False
+    
+    def __eq__(self, other: Node) -> bool:
+        return (
+            self.id == other.id and 
+            self.word_id == other.word_id and
+            self.order == other.order and
+            self.deprecated == other.deprecated
+        )
+
+class LinkedList:
+    def __init__(self, first: Node) -> None:
+        self.begin = self.end = first
+        self.len = 1
+    
+    def append(self, new_node: Node) -> None:
+        self.end.nxt = new_node
+        new_node.pre = self.end
+        self.end = new_node
+        self.len += 1
+    
+    def merge(self, pre_node: Node, nxt_node: Node | None, new_id: int) -> None:
+        assert pre_node.nxt is not None
+        pre_node.id = new_id
+        pre_node.nxt.deprecated = True
+        self.len -= 1
+        if nxt_node is None:
+            pre_node.nxt = None
+            self.end = pre_node
+        else:
+            pre_node.nxt = nxt_node
+            nxt_node.pre = pre_node
+    
+    def __len__(self) -> int:
+        return self.len
+
+class BPETokenizer(Tokenizer):
+    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str]) -> None:
+        self.dataset_path = dataset_path
+        self.vocab_size = vocab_size
+        self.special_tokens = special_tokens
+        self.merges: list[tuple[bytes, bytes]] = []
+        self._init_vocab()
+        self._init_id_map()
+
+    def _init_vocab(self) -> None:
+        self.vocab: list[bytes] = []
+        for tok in self.special_tokens:
+            self.vocab.append(tok.encode("utf-8"))
+        for i in range(0, 256):
+            self.vocab.append(bytes([i]))
+    
+    def _init_id_map(self) -> None:
+        self.id_map: dict[bytes, int] = {}
+        for id, tok in enumerate(self.vocab):
+            self.id_map[tok] = id
+    
+    def _pretokenize(self) -> None:
+        with open(self.dataset_path, "r") as data:
+            split_pattern = "|".join(map(re.escape, self.special_tokens))
+            corpuses = re.split(split_pattern, data.read())
+            div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+            self.words: list[bytes] = []
+            for corpus in corpuses:
+                self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
+    
+    def _represent_words_by_linkedlists(self) -> None:
+        self.id_lists: list[LinkedList] = []
+        for i, word in enumerate(self.words):
+            new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, i))
+            for j, byte in enumerate(word[1:]):
+                new_list.append(Node(self.id_map[bytes([byte])], j + 1, i))
+            # ic(len(new_list))
+            self.id_lists.append(new_list)
+    
+    def _get_max_count(self) -> tuple[int, int] | None:
+        cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]] + self.vocab[x[1]])
+        return max(self.id_pair_count, key=cmp, default=None)
+    
+    def _count_in(self, pos: Node, id_pair: tuple[int, int]) -> None:
+        if id_pair not in self.id_pair_count:
+            self.id_pair_count[id_pair] = 0
+            self.id_pair_occurrences[id_pair] = []
+        # ic("count in", pos, id_pair)
+        self.id_pair_count[id_pair] += 1
+        self.id_pair_occurrences[id_pair].append(pos)
+    
+    def _erase(self, left_node: Node, right_node: Node) -> None:
+        id_pair = (left_node.id, right_node.id)
+        self.id_pair_count[id_pair] -= 1
+        # self.id_pair_occurrences[id_pair].remove(left_node)
+    
+    def _first_count_id_pairs(self) -> None:
+        self.id_pair_count: dict[tuple[int, int], int] = {}
+        self.id_pair_occurrences: dict[tuple[int, int], list[Node]] = {}
+        for id_list in self.id_lists:
+            current_node = id_list.begin
+            while current_node.nxt is not None:
+                self._count_in(current_node, (current_node.id, current_node.nxt.id))
+                current_node = current_node.nxt
+    
+    def _add_to_vocab(self, id_pair: tuple[int, int]) -> None:
+        # create a new token id
+        new_id = len(self.vocab)
+        bytes_pair = self.vocab[id_pair[0]] + self.vocab[id_pair[1]]
+        self.id_map[bytes_pair] = new_id
+        self.vocab.append(bytes_pair)
+        # erase the effect caused by previous token ids
+        # and exercise the effect caused by the new token id
+        for pos in self.id_pair_occurrences[id_pair]:
+            # ic(pos.id, pos.word_id)
+            # ic(pos.id, pos.word_id, pos.deprecated)
+            # if pos.deprecated == True: continue
+            if (
+                pos.deprecated == True or
+                pos.nxt is None or
+                pos.id != id_pair[0] or
+                pos.nxt.id != id_pair[1]
+            ): continue
+            # assert pos.nxt is not None
+            if pos.pre is not None:
+                self._erase(pos.pre, pos)
+                self._count_in(pos.pre, (pos.pre.id, new_id))
+            if pos.nxt.nxt is not None:
+                self._erase(pos.nxt, pos.nxt.nxt)
+                self._count_in(pos, (new_id, pos.nxt.nxt.id))
+            # ic(pos.nxt.id, pos.nxt.word_id, new_id)
+            self.id_lists[pos.word_id].merge(pos, pos.nxt.nxt, new_id)
+        del self.id_pair_count[id_pair]
+        del self.id_pair_occurrences[id_pair]
+        self.merges.append((self.vocab[id_pair[0]], self.vocab[id_pair[1]]))
+    
+    def _get_merge(self, id_pair: tuple[int, int]) -> tuple[bytes, bytes]:
+        return (self.vocab[id_pair[0]], self.vocab[id_pair[1]])
+    
+    def train(self) -> None:
+        self._pretokenize()
+        self._represent_words_by_linkedlists()
+        self._first_count_id_pairs()
+        # print(f"initial vocab size: {len(self.vocab)} / {self.vocab_size}")
+        while len(self.vocab) < self.vocab_size:
+            # get max id_pair_count
+            max_id_pair = self._get_max_count()
+            if max_id_pair is None or self.id_pair_count[max_id_pair] == 0: break
+            # ic(max_id_pair)
+            # ic(self._get_merge(max_id_pair))
+            # add the pair into vocab
+            # print(f"new merge: {self._get_merge(max_id_pair)}")
+            self._add_to_vocab(max_id_pair)
+            # print(f"updated vocab size: {len(self.vocab)} / {self.vocab_size}")
+
+def run_train_bpe(
+    input_path: str | os.PathLike,
+    vocab_size: int,
+    special_tokens: list[str],
+    **kwargs,
+) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+    """Given the path to an input corpus, run train a BPE tokenizer and
+    output its vocabulary and merges.
+
+    Args:
+        input_path (str | os.PathLike): Path to BPE tokenizer training data.
+        vocab_size (int): Total number of items in the tokenizer's vocabulary (including special tokens).
+        special_tokens (list[str]): A list of string special tokens to be added to the tokenizer vocabulary.
+            These strings will never be split into multiple tokens, and will always be
+            kept as a single token. If these special tokens occur in the `input_path`,
+            they are treated as any other string.
+
+    Returns:
+        tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
+            vocab:
+                The trained tokenizer vocabulary, a mapping from int (token ID in the vocabulary)
+                to bytes (token bytes)
+            merges:
+                BPE merges. Each list item is a tuple of bytes (<token1>, <token2>),
+                representing that <token1> was merged with <token2>.
+                Merges are ordered by order of creation.
+    """
+    if isinstance(input_path, os.PathLike):
+        input_path = os.fspath(input_path)
+    tokenizer = BPETokenizer(input_path, vocab_size, special_tokens)
+    tokenizer.train()
+    return ({i: tokenizer.vocab[i] for i in range(0, len(tokenizer.vocab))}, tokenizer.merges)
+
+if __name__ == "__main__":
+    # cli()
+    # dataset_path = "./data/bpe-test.txt"
+    # vocab_size = 2 + 256 + 100
+    # special_tokens = [" ", "\n"]
+    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    special_tokens = ["<|endoftext|>"]
+    vocab_size = len(special_tokens) + 256 + 1
+    # start bpe tokenizer training
+    tokenizer = BPETokenizer(dataset_path, vocab_size, special_tokens)
+    tokenizer.train()
+    # store training results: vocab and merges
+    # ic(tokenizer.words)
+    # ic(tokenizer.merges)
+    # ic(len(tokenizer.merges))
+    # ic(tokenizer.vocab[len(special_tokens) + 256:])
+    # ic(len(tokenizer.vocab))
+    
