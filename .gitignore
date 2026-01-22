@@ -168,3 +168,6 @@ tinystories_data/*
 !tinystories_data/README.md
 data/*
 !data/.gitkeep
+
+# profiling
+**.prof
