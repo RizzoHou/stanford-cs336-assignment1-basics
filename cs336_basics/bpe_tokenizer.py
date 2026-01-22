@@ -97,7 +97,7 @@ class BPETokenizer(Tokenizer):
             self.id_lists.append(new_list)
     
     def _get_max_count(self) -> tuple[int, int] | None:
-        cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]] + self.vocab[x[1]])
+        cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]], self.vocab[x[1]])
         return max(self.id_pair_count, key=cmp, default=None)
     
     def _count_in(self, pos: Node, id_pair: tuple[int, int]) -> None:
