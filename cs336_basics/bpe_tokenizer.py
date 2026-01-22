@@ -1,3 +1,4 @@
+# this version of tokenizer is able to pass test_train_bpe
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import regex as re
