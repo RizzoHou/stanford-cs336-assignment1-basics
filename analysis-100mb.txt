@@ -1,0 +1,36 @@
+Fri Jan 23 22:17:50 2026    bpe-100mb.prof
+
+         936766188 function calls (936710853 primitive calls) in 909.832 seconds
+
+   Ordered by: internal time
+   List reduced from 1271 to 26 due to restriction <'bpe'>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+     9743 662.762204 0.068024 733.049858 0.075239 bpe_tokenizer_training.py:204(_add_to_vocab)
+        1 58.391674 58.391674 116.035290 116.035290 bpe_tokenizer_training.py:117(_pretokenize_and_represent_by_linkedlists)
+103201037 47.383032 0.000000 47.383032 0.000000 bpe_tokenizer_training.py:21(__init__)
+ 77857182 42.169770 0.000001 42.169770 0.000001 bpe_tokenizer_training.py:48(merge)
+145242837 25.634779 0.000000 33.476467 0.000000 bpe_tokenizer_training.py:177(_count_in)
+218079696 17.121924 0.000000 17.121924 0.000000 bpe_tokenizer_training.py:174(<lambda>)
+        1 11.480366 11.480366 27.033750 27.033750 bpe_tokenizer_training.py:190(_first_count_id_pairs)
+ 67298323 10.186124 0.000000 10.186124 0.000000 bpe_tokenizer_training.py:185(_erase)
+ 77944514 3.547681 0.000000 3.547681 0.000000 bpe_tokenizer_training.py:42(append)
+        1 2.307343 2.307343 2.340288 2.340288 bpe_tokenizer_training.py:283(save_merges)
+ 25256523 0.952459 0.000000 0.952459 0.000000 bpe_tokenizer_training.py:38(__init__)
+        1 0.040177 0.040177 907.403615 907.403615 bpe_tokenizer_training.py:238(run)
+     9743 0.011043 0.000001 31.191881 0.003201 bpe_tokenizer_training.py:173(_get_max_count)
+        1 0.001094 0.001094 0.020180 0.020180 bpe_tokenizer_training.py:274(save_vocab)
+        1 0.000455 0.000455 2.361029 2.361029 bpe_tokenizer_training.py:292(save)
+        1 0.000066 0.000066 909.831897 909.831897 bpe_tokenizer_training.py:1(<module>)
+       98 0.000033 0.000000 0.000033 0.000000 bpe_tokenizer_training.py:235(_get_merge)
+        1 0.000027 0.000027 0.000036 0.000036 bpe_tokenizer_training.py:105(_init_vocab)
+        1 0.000010 0.000010 0.000010 0.000010 bpe_tokenizer_training.py:112(_init_id_map)
+        1 0.000005 0.000005 0.000881 0.000881 bpe_tokenizer_training.py:64(__init__)
+        1 0.000005 0.000005 0.000096 0.000096 bpe_tokenizer_training.py:80(_setup_logging)
+        1 0.000004 0.000004 0.000004 0.000004 bpe_tokenizer_training.py:63(BPETokenizerTraining)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer_training.py:11(TokenizerTraining)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer_training.py:37(LinkedList)
+        1 0.000001 0.000001 0.000001 0.000001 bpe_tokenizer_training.py:20(Node)
+        1 0.000000 0.000000 0.000000 0.000000 bpe_tokenizer_training.py:71(<lambda>)
+
+
