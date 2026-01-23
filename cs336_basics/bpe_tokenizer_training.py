@@ -59,9 +59,11 @@ class LinkedList:
         return self.len
 
 class BPETokenizerTraining(TokenizerTraining):
-    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str]) -> None:
+    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str] | None = None) -> None:
         self.dataset_path = dataset_path
         self.vocab_size = vocab_size
+        if special_tokens is None:
+            special_tokens = []
         self.special_tokens = special_tokens
         self.merges: list[tuple[bytes, bytes]] = []
         self._init_vocab()
@@ -124,7 +126,10 @@ class BPETokenizerTraining(TokenizerTraining):
                 # ic(corpuses)
                 # assert corpuses and isinstance(corpuses, str)
                 assert isinstance(corpuses, str)
-                corpuses = compiled_split_pattern.split(corpuses)
+                if not self.special_tokens:
+                    corpuses = [corpuses]
+                else:
+                    corpuses = compiled_split_pattern.split(corpuses)
                 for corpus in corpuses:
                     if not corpus: continue
                     for word_match in compiled_div_pattern.finditer(corpus):
