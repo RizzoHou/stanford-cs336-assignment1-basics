@@ -125,7 +125,10 @@ class BPETokenizerTraining(TokenizerTraining):
     def _pretokenize(self) -> None:
         self.logger.info("Starting pre-tokenization...")
         self.words: list[bytes] = []
-        mini_chunk_size = 1024 * 1024 * 100
+        mini_chunk_size_mb = 1000
+        mini_chunk_size = 1024 * 1024 * mini_chunk_size_mb
+        self.logger.info(f"mini_chunk_size: 1024 * 1024 * {mini_chunk_size_mb}")
+        cumulative_corpuses_len = 0
         with open(self.dataset_path, "r", encoding="utf-8") as data:
             left_part = ""
             reached_end = False
@@ -156,6 +159,7 @@ class BPETokenizerTraining(TokenizerTraining):
                 # ic(corpuses)
                 # assert corpuses and isinstance(corpuses, str)
                 assert isinstance(corpuses, str)
+                cumulative_corpuses_len += len(corpuses)
                 if not self.special_tokens:
                     corpuses = [corpuses]
                 else:
@@ -164,16 +168,23 @@ class BPETokenizerTraining(TokenizerTraining):
                     if not corpus: continue
                     for word_match in self.compiled_div_pattern.finditer(corpus):
                         self.words.append(word_match.group().encode("utf-8"))
+                self.logger.info(
+                    f"cumulative_corpuses_len(similar to mb): {cumulative_corpuses_len / 1024 / 1024:.2f}"
+                )
     
     def _represent_words_by_linkedlists(self) -> None:
         self.logger.info(f"Representing {len(self.words)} words as linked lists...")
         self.id_lists: list[LinkedList] = []
+        reporting_num = 1
         for i, word in enumerate(self.words):
             new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, i))
             for j, byte in enumerate(word[1:]):
                 new_list.append(Node(self.id_map[bytes([byte])], j + 1, i))
             # ic(len(new_list))
             self.id_lists.append(new_list)
+            if i + 1 == reporting_num:
+                self.logger.info(f"have represented {i + 1} words as linked lists.")
+                reporting_num *= 10
     
     def _get_max_count(self) -> tuple[int, int] | None:
         cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]], self.vocab[x[1]])
@@ -193,10 +204,14 @@ class BPETokenizerTraining(TokenizerTraining):
         # self.id_pair_occurrences[id_pair].remove(left_node)
     
     def _first_count_id_pairs(self) -> None:
-        self.logger.info("Performing initial pair counting...")
+        self.logger.info(f"Performing initial pair counting in {len(self.words)} words...")
         self.id_pair_count: dict[tuple[int, int], int] = {}
         self.id_pair_occurrences: dict[tuple[int, int], list[Node]] = {}
-        for id_list in self.id_lists:
+        reporting_num = 1
+        for i, id_list in enumerate(self.id_lists):
+            if i + 1 == reporting_num:
+                self.logger.info(f"have counted pairs in {i + 1} words.")
+                reporting_num *= 10
             current_node = id_list.begin
             while current_node.nxt is not None:
                 self._count_in(current_node, (current_node.id, current_node.nxt.id))
@@ -274,16 +289,20 @@ class BPETokenizerTraining(TokenizerTraining):
     def save_vocab(self, path: str) -> None:
         self.logger.info(f"Saving vocab with a size of {len(self.vocab)} into {path}...")
         vocab_to_save = {
-            tok_bytes.decode("latin-1"): id for id, tok_bytes in enumerate(self.vocab)
+            tok_bytes.decode("latin-1"): id 
+            for id, tok_bytes in enumerate(self.vocab)
         }
         with open(path, "w", encoding="utf-8") as file:
             json.dump(vocab_to_save, file, indent=4, ensure_ascii=False)
     
     def save_merges(self, path: str) -> None:
         self.logger.info(f"Saving merges with a size of {len(self.merges)} into {path}...")
+        merges_to_save = [
+            (part1.decode("latin-1"), part2.decode("latin-1"))
+            for part1, part2 in self.merges
+        ]
         with open(path, "w", encoding="utf-8") as file:
-            for merge in self.merges:
-                file.write(f"{merge[0].decode("latin-1")} {merge[1].decode("latin-1")}\n")
+            json.dump(merges_to_save, file, indent=4, ensure_ascii=False)
     
     def save(self, vocab_path: str, merges_path: str) -> None:
         self.logger.info(f"Saving the tokenizer...")
@@ -297,15 +316,15 @@ if __name__ == "__main__":
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
     # start bpe tokenizer training
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
     tokenizer_training.run()
     tokenizer_training.save(
-        "./models/tokenizers/TinyStoriesV2-GPT4-valid-vocab.json",
-        "./models/tokenizers/TinyStoriesV2-GPT4-valid-merges.txt"
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-vocab.json",
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-merges.txt"
     )
     # store training results: vocab and merges
     # ic(tokenizer.merges)
