@@ -12,7 +12,7 @@ class TokenizerTraining(ABC):
         pass
     
     @abstractmethod
-    def start(self):
+    def run(self):
         pass
 
 class Node:
@@ -69,6 +69,10 @@ class BPETokenizerTraining(TokenizerTraining):
         self.merges: list[tuple[bytes, bytes]] = []
         self._init_vocab()
         self._init_id_map()
+        self.split_pattern = "|".join(map(re.escape, self.special_tokens))
+        self.compiled_split_pattern = re.compile(self.split_pattern)
+        self.div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+        self.compiled_div_pattern = re.compile(self.div_pattern)
 
     def _init_vocab(self) -> None:
         self.vocab: list[bytes] = []
@@ -92,10 +96,6 @@ class BPETokenizerTraining(TokenizerTraining):
     #             self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
     def _pretokenize(self) -> None:
         self.words: list[bytes] = []
-        split_pattern = "|".join(map(re.escape, self.special_tokens))
-        compiled_split_pattern = re.compile(split_pattern)
-        div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-        compiled_div_pattern = re.compile(div_pattern)
         mini_chunk_size = 1024 * 1024 * 100
         with open(self.dataset_path, "r", encoding="utf-8") as data:
             left_part = ""
@@ -130,10 +130,10 @@ class BPETokenizerTraining(TokenizerTraining):
                 if not self.special_tokens:
                     corpuses = [corpuses]
                 else:
-                    corpuses = compiled_split_pattern.split(corpuses)
+                    corpuses = self.compiled_split_pattern.split(corpuses)
                 for corpus in corpuses:
                     if not corpus: continue
-                    for word_match in compiled_div_pattern.finditer(corpus):
+                    for word_match in self.compiled_div_pattern.finditer(corpus):
                         self.words.append(word_match.group().encode("utf-8"))
     
     def _represent_words_by_linkedlists(self) -> None:
@@ -205,7 +205,7 @@ class BPETokenizerTraining(TokenizerTraining):
     def _get_merge(self, id_pair: tuple[int, int]) -> tuple[bytes, bytes]:
         return (self.vocab[id_pair[0]], self.vocab[id_pair[1]])
     
-    def start(self) -> None:
+    def run(self) -> None:
         self._pretokenize()
         self._represent_words_by_linkedlists()
         self._first_count_id_pairs()
@@ -226,12 +226,12 @@ if __name__ == "__main__":
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
     # start bpe tokenizer training
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens)
-    tokenizer_training.start()
+    tokenizer_training.run()
     # store training results: vocab and merges
     # ic(tokenizer.merges)
     # ic(len(tokenizer.merges))

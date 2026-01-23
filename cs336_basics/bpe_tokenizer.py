@@ -55,10 +55,11 @@ class Tokenizer:
         self._init_id_map()
         self._init_id_merging_order_map()
         self._init_id_map_by_id_merge()
-        if self.special_tokens:
-            self.special_tokens.sort(key=lambda x: -len(x))
-            self.split_pattern = f"({'|'.join(map(re.escape, self.special_tokens))})"
-            self.compiled_split_pattern = re.compile(self.split_pattern)
+        if self.special_tokens is None:
+            self.special_tokens = []
+        self.special_tokens.sort(key=lambda x: -len(x))
+        self.split_pattern = f"({'|'.join(map(re.escape, self.special_tokens))})"
+        self.compiled_split_pattern = re.compile(self.split_pattern)
         self.div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         self.compiled_div_pattern = re.compile(self.div_pattern)
         # self._init_merging_order_map()
@@ -160,7 +161,6 @@ class Tokenizer:
         return encoding_result
     
     def _encode_iterable_with_special_tokens(self, iterable: Iterable[str]) -> Iterator[int]:
-        assert self.special_tokens is not None
         buffer = ""
         for piece in iterable:
             buffer += piece
@@ -204,7 +204,7 @@ if __name__ == "__main__":
     special_tokens = []
     vocab_size = 10000
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens)
-    tokenizer_training.start()
+    tokenizer_training.run()
     vocab = {i: word for i, word in enumerate(tokenizer_training.vocab)}
     tokenizer = Tokenizer(vocab, tokenizer_training.merges, special_tokens)
     with open(dataset_path, "r", encoding="utf-8") as data:

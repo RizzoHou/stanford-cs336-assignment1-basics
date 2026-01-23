@@ -595,5 +595,5 @@ def run_train_bpe(
     if isinstance(input_path, os.PathLike):
         input_path = os.fspath(input_path)
     tokenizer = BPETokenizerTraining(input_path, vocab_size, special_tokens)
-    tokenizer.start()
+    tokenizer.run()
     return ({i: tokenizer.vocab[i] for i in range(0, len(tokenizer.vocab))}, tokenizer.merges)
