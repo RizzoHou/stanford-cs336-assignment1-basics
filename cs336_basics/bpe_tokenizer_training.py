@@ -113,25 +113,33 @@ class BPETokenizerTraining(TokenizerTraining):
         self.id_map: dict[bytes, int] = {}
         for id, tok in enumerate(self.vocab):
             self.id_map[tok] = id
+
+    def _add_word(self, word: bytes) -> None:
+        new_word_id = len(self.id_lists)
+        self.word_id_map[word] = new_word_id
+        self.word_num_map[new_word_id] = 1
+        new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, new_word_id))
+        for i, byte in enumerate(word[1:]):
+            new_list.append(Node(self.id_map[bytes([byte])], i + 1, new_word_id))
+        self.id_lists.append(new_list)
     
     def _pretokenize_and_represent_by_linkedlists(self) -> None:
         self.logger.info("Starting pre-tokenization and representation...")
         self.id_lists: list[LinkedList] = []
-        mini_chunk_size_mb = 16
+        self.word_id_map: dict[bytes, int] = {}
+        self.word_num_map: dict[int, int] = {}
+        mini_chunk_size_mb = 100
         mini_chunk_size = 1024 * 1024 * mini_chunk_size_mb
         self.logger.info(f"mini_chunk_size: 1024 * 1024 * {mini_chunk_size_mb}")
         cumulative_corpuses_len = 0
-        word_count = 0
         with open(self.dataset_path, "r", encoding="utf-8") as data:
             left_part = ""
             reached_end = False
             while True:
-                # ic()
                 chunk = data.read(mini_chunk_size)
                 if not chunk and not left_part: break
                 if not chunk: reached_end = True
                 chunk = left_part + chunk
-                # ic(chunk)
                 special_idx = -1
                 selected_special_str = ""
                 for special_token in self.special_tokens:
@@ -149,8 +157,6 @@ class BPETokenizerTraining(TokenizerTraining):
                     else:
                         left_part = chunk
                         continue
-                # ic(corpuses)
-                # assert corpuses and isinstance(corpuses, str)
                 assert isinstance(corpuses, str)
                 cumulative_corpuses_len += len(corpuses)
                 if not self.special_tokens:
@@ -161,11 +167,10 @@ class BPETokenizerTraining(TokenizerTraining):
                     if not corpus: continue
                     for word_match in self.compiled_div_pattern.finditer(corpus):
                         word = word_match.group().encode("utf-8")
-                        word_count += 1
-                        new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, word_count))
-                        for j, byte in enumerate(word[1:]):
-                            new_list.append(Node(self.id_map[bytes([byte])], j + 1, word_count))
-                        self.id_lists.append(new_list)
+                        if word in self.word_id_map:
+                            self.word_num_map[self.word_id_map[word]] += 1
+                            continue
+                        self._add_word(word)
                 self.logger.info(
                     f"cumulative_corpuses_len(approximate to MB): {cumulative_corpuses_len / 1024 / 1024:.2f}"
                 )
@@ -178,28 +183,25 @@ class BPETokenizerTraining(TokenizerTraining):
         if id_pair not in self.id_pair_count:
             self.id_pair_count[id_pair] = 0
             self.id_pair_occurrences[id_pair] = []
-        # ic("count in", pos, id_pair)
-        self.id_pair_count[id_pair] += 1
+        self.id_pair_count[id_pair] += self.word_num_map[pos.word_id]
         self.id_pair_occurrences[id_pair].append(pos)
     
     def _erase(self, left_node: Node, right_node: Node) -> None:
-        id_pair = (left_node.id, right_node.id)
-        self.id_pair_count[id_pair] -= 1
-        # self.id_pair_occurrences[id_pair].remove(left_node)
+        self.id_pair_count[(left_node.id, right_node.id)] -= self.word_num_map[left_node.word_id]
     
     def _first_count_id_pairs(self) -> None:
-        self.logger.info(f"Performing initial pair counting in {len(self.id_lists)} words...")
+        self.logger.info(f"Performing initial pair counting in {len(self.id_lists)} unrepeated words...")
         self.id_pair_count: dict[tuple[int, int], int] = {}
         self.id_pair_occurrences: dict[tuple[int, int], list[Node]] = {}
         reporting_num = 1
         for i, id_list in enumerate(self.id_lists):
-            if i + 1 == reporting_num:
-                self.logger.info(f"have counted pairs in {i + 1} words.")
-                reporting_num *= 10
             current_node = id_list.begin
             while current_node.nxt is not None:
                 self._count_in(current_node, (current_node.id, current_node.nxt.id))
                 current_node = current_node.nxt
+            if i + 1 == reporting_num:
+                self.logger.info(f"have counted pairs in {i + 1} words.")
+                reporting_num *= 10
     
     def _add_to_vocab(self, id_pair: tuple[int, int]) -> None:
         # create a new token id
@@ -210,23 +212,18 @@ class BPETokenizerTraining(TokenizerTraining):
         # erase the effect caused by previous token ids
         # and exercise the effect caused by the new token id
         for pos in self.id_pair_occurrences[id_pair]:
-            # ic(pos.id, pos.word_id)
-            # ic(pos.id, pos.word_id, pos.deprecated)
-            # if pos.deprecated == True: continue
             if (
                 pos.deprecated == True or
                 pos.nxt is None or
                 pos.id != id_pair[0] or
                 pos.nxt.id != id_pair[1]
             ): continue
-            # assert pos.nxt is not None
             if pos.pre is not None:
                 self._erase(pos.pre, pos)
                 self._count_in(pos.pre, (pos.pre.id, new_id))
             if pos.nxt.nxt is not None:
                 self._erase(pos.nxt, pos.nxt.nxt)
                 self._count_in(pos, (new_id, pos.nxt.nxt.id))
-            # ic(pos.nxt.id, pos.nxt.word_id, new_id)
             self.id_lists[pos.word_id].merge(pos, pos.nxt.nxt, new_id)
         del self.id_pair_count[id_pair]
         del self.id_pair_occurrences[id_pair]
@@ -238,8 +235,6 @@ class BPETokenizerTraining(TokenizerTraining):
     def run(self) -> None:
         self._setup_logging()
         start_time = time.time()
-        # self._pretokenize()
-        # self._represent_words_by_linkedlists()
         self._pretokenize_and_represent_by_linkedlists()
         self._first_count_id_pairs()
         initial_vocab_size = len(self.vocab)
@@ -300,21 +295,22 @@ if __name__ == "__main__":
     # cli()
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
+    # special_tokens = [" ", "\n"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStoriesV2-GPT4-100mb.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
     # start bpe tokenizer training
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
     tokenizer_training.run()
     tokenizer_training.save(
-        "./models/tokenizers/TinyStoriesV2-GPT4-100mb-vocab.json",
-        "./models/tokenizers/TinyStoriesV2-GPT4-100mb-merges.txt"
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-vocab.json",
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-merges.txt"
     )
     # store training results: vocab and merges
-    # ic(tokenizer.merges)
-    # ic(len(tokenizer.merges))
-    # ic(tokenizer.vocab[len(special_tokens) + 256:])
-    # ic(len(tokenizer.vocab))
+    # ic(tokenizer_training.merges)
+    # ic(len(tokenizer_training.merges))
+    # ic(tokenizer_training.vocab[len(special_tokens) + 256:])
+    # ic(len(tokenizer_training.vocab))
     # print(tokenizer_training.merges)
     # print(tokenizer_training.vocab)
