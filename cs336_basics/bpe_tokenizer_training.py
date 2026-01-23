@@ -6,6 +6,7 @@ import os
 import logging
 import time
 from operator import methodcaller
+import json
 
 class TokenizerTraining(ABC):
     @abstractmethod
@@ -122,6 +123,7 @@ class BPETokenizerTraining(TokenizerTraining):
     #         for corpus in corpuses:
     #             self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
     def _pretokenize(self) -> None:
+        self.logger.info("Starting pre-tokenization...")
         self.words: list[bytes] = []
         mini_chunk_size = 1024 * 1024 * 100
         with open(self.dataset_path, "r", encoding="utf-8") as data:
@@ -164,6 +166,7 @@ class BPETokenizerTraining(TokenizerTraining):
                         self.words.append(word_match.group().encode("utf-8"))
     
     def _represent_words_by_linkedlists(self) -> None:
+        self.logger.info(f"Representing {len(self.words)} words as linked lists...")
         self.id_lists: list[LinkedList] = []
         for i, word in enumerate(self.words):
             new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, i))
@@ -190,6 +193,7 @@ class BPETokenizerTraining(TokenizerTraining):
         # self.id_pair_occurrences[id_pair].remove(left_node)
     
     def _first_count_id_pairs(self) -> None:
+        self.logger.info("Performing initial pair counting...")
         self.id_pair_count: dict[tuple[int, int], int] = {}
         self.id_pair_occurrences: dict[tuple[int, int], list[Node]] = {}
         for id_list in self.id_lists:
@@ -234,17 +238,10 @@ class BPETokenizerTraining(TokenizerTraining):
     
     def run(self) -> None:
         self._setup_logging()
-        
         start_time = time.time()
-        self.logger.info("Starting pre-tokenization...")
         self._pretokenize()
-        
-        self.logger.info(f"Representing {len(self.words)} words as linked lists...")
         self._represent_words_by_linkedlists()
-        
-        self.logger.info("Performing initial pair counting...")
         self._first_count_id_pairs()
-        
         initial_vocab_size = len(self.vocab)
         self.logger.info(f"Initial vocab size: {initial_vocab_size}. Target: {self.vocab_size}")
 
@@ -274,6 +271,27 @@ class BPETokenizerTraining(TokenizerTraining):
         total_time = time.time() - start_time
         self.logger.info(f"Training complete in {total_time/60:.2f} minutes.")
 
+    def save_vocab(self, path: str) -> None:
+        self.logger.info(f"Saving vocab with a size of {len(self.vocab)} into {path}...")
+        vocab_to_save = {
+            tok_bytes.decode("latin-1"): id for id, tok_bytes in enumerate(self.vocab)
+        }
+        with open(path, "w", encoding="utf-8") as file:
+            json.dump(vocab_to_save, file, indent=4, ensure_ascii=False)
+    
+    def save_merges(self, path: str) -> None:
+        self.logger.info(f"Saving merges with a size of {len(self.merges)} into {path}...")
+        with open(path, "w", encoding="utf-8") as file:
+            for merge in self.merges:
+                file.write(f"{merge[0].decode("latin-1")} {merge[1].decode("latin-1")}\n")
+    
+    def save(self, vocab_path: str, merges_path: str) -> None:
+        self.logger.info(f"Saving the tokenizer...")
+        self.logger.info(f"vocab_path: {vocab_path}")
+        self.logger.info(f"merges_path: {merges_path}")
+        self.save_vocab(vocab_path)
+        self.save_merges(merges_path)
+
 if __name__ == "__main__":
     # cli()
     # dataset_path = "./data/bpe-test.txt"
@@ -285,10 +303,14 @@ if __name__ == "__main__":
     # start bpe tokenizer training
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
     tokenizer_training.run()
+    tokenizer_training.save(
+        "./models/tokenizers/TinyStoriesV2-GPT4-valid-vocab.json",
+        "./models/tokenizers/TinyStoriesV2-GPT4-valid-merges.txt"
+    )
     # store training results: vocab and merges
     # ic(tokenizer.merges)
     # ic(len(tokenizer.merges))
     # ic(tokenizer.vocab[len(special_tokens) + 256:])
     # ic(len(tokenizer.vocab))
-    print(tokenizer_training.merges)
-    print(tokenizer_training.vocab)
+    # print(tokenizer_training.merges)
+    # print(tokenizer_training.vocab)
