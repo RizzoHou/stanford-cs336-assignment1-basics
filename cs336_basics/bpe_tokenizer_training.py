@@ -186,6 +186,62 @@ class BPETokenizerTraining(TokenizerTraining):
                 self.logger.info(f"have represented {i + 1} words as linked lists.")
                 reporting_num *= 10
     
+    def _pretokenize_and_represent_by_linkedlists(self) -> None:
+        self.logger.info("Starting pre-tokenization and representation...")
+        self.id_lists: list[LinkedList] = []
+        mini_chunk_size_mb = 16
+        mini_chunk_size = 1024 * 1024 * mini_chunk_size_mb
+        self.logger.info(f"mini_chunk_size: 1024 * 1024 * {mini_chunk_size_mb}")
+        cumulative_corpuses_len = 0
+        word_count = 0
+        with open(self.dataset_path, "r", encoding="utf-8") as data:
+            left_part = ""
+            reached_end = False
+            while True:
+                # ic()
+                chunk = data.read(mini_chunk_size)
+                if not chunk and not left_part: break
+                if not chunk: reached_end = True
+                chunk = left_part + chunk
+                # ic(chunk)
+                special_idx = -1
+                selected_special_str = ""
+                for special_token in self.special_tokens:
+                    idx = chunk.rfind(special_token)
+                    if idx > special_idx:
+                        special_idx = idx
+                        selected_special_str = special_token
+                if special_idx != -1:
+                    corpuses = chunk[:special_idx]
+                    left_part = chunk[special_idx + len(selected_special_str):]
+                if special_idx == -1:
+                    if reached_end:
+                        corpuses = chunk
+                        left_part = ""
+                    else:
+                        left_part = chunk
+                        continue
+                # ic(corpuses)
+                # assert corpuses and isinstance(corpuses, str)
+                assert isinstance(corpuses, str)
+                cumulative_corpuses_len += len(corpuses)
+                if not self.special_tokens:
+                    corpuses = [corpuses]
+                else:
+                    corpuses = self.compiled_split_pattern.split(corpuses)
+                for corpus in corpuses:
+                    if not corpus: continue
+                    for word_match in self.compiled_div_pattern.finditer(corpus):
+                        word = word_match.group().encode("utf-8")
+                        word_count += 1
+                        new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, word_count))
+                        for j, byte in enumerate(word[1:]):
+                            new_list.append(Node(self.id_map[bytes([byte])], j + 1, word_count))
+                        self.id_lists.append(new_list)
+                self.logger.info(
+                    f"cumulative_corpuses_len(similar to mb): {cumulative_corpuses_len / 1024 / 1024:.2f}"
+                )
+    
     def _get_max_count(self) -> tuple[int, int] | None:
         cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]], self.vocab[x[1]])
         return max(self.id_pair_count, key=cmp, default=None)
@@ -254,8 +310,9 @@ class BPETokenizerTraining(TokenizerTraining):
     def run(self) -> None:
         self._setup_logging()
         start_time = time.time()
-        self._pretokenize()
-        self._represent_words_by_linkedlists()
+        # self._pretokenize()
+        # self._represent_words_by_linkedlists()
+        self._pretokenize_and_represent_by_linkedlists()
         self._first_count_id_pairs()
         initial_vocab_size = len(self.vocab)
         self.logger.info(f"Initial vocab size: {initial_vocab_size}. Target: {self.vocab_size}")
