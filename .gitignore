@@ -172,5 +172,8 @@ data/*
 # profiling
 **.prof
 
-# output file
+# output files
 nohup.out
+
+# testing results
+test_results.xml
