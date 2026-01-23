@@ -171,3 +171,6 @@ data/*
 
 # profiling
 **.prof
+
+# output file
+nohup.out
