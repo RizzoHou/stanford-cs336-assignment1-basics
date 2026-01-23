@@ -9,7 +9,7 @@ import torch
 from jaxtyping import Bool, Float, Int
 from torch import Tensor
 
-from cs336_basics.bpe_tokenizer import BPETokenizer
+from cs336_basics.bpe_tokenizer_training import BPETokenizerTraining
 
 
 def run_linear(
@@ -593,6 +593,6 @@ def run_train_bpe(
     """
     if isinstance(input_path, os.PathLike):
         input_path = os.fspath(input_path)
-    tokenizer = BPETokenizer(input_path, vocab_size, special_tokens)
-    tokenizer.train()
+    tokenizer = BPETokenizerTraining(input_path, vocab_size, special_tokens)
+    tokenizer.start()
     return ({i: tokenizer.vocab[i] for i in range(0, len(tokenizer.vocab))}, tokenizer.merges)

@@ -6,13 +6,13 @@ from icecream import ic
 import os
 from operator import methodcaller
 
-class Tokenizer(ABC):
+class TokenizerTraining(ABC):
     @abstractmethod
     def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str]):
         pass
     
     @abstractmethod
-    def train(self):
+    def start(self):
         pass
 
 class Node:
@@ -58,7 +58,7 @@ class LinkedList:
     def __len__(self) -> int:
         return self.len
 
-class BPETokenizer(Tokenizer):
+class BPETokenizerTraining(TokenizerTraining):
     def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str]) -> None:
         self.dataset_path = dataset_path
         self.vocab_size = vocab_size
@@ -199,7 +199,7 @@ class BPETokenizer(Tokenizer):
     def _get_merge(self, id_pair: tuple[int, int]) -> tuple[bytes, bytes]:
         return (self.vocab[id_pair[0]], self.vocab[id_pair[1]])
     
-    def train(self) -> None:
+    def start(self) -> None:
         self._pretokenize()
         self._represent_words_by_linkedlists()
         self._first_count_id_pairs()
@@ -215,53 +215,22 @@ class BPETokenizer(Tokenizer):
             self._add_to_vocab(max_id_pair)
             # print(f"updated vocab size: {len(self.vocab)} / {self.vocab_size}")
 
-def run_train_bpe(
-    input_path: str | os.PathLike,
-    vocab_size: int,
-    special_tokens: list[str],
-    **kwargs,
-) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-    """Given the path to an input corpus, run train a BPE tokenizer and
-    output its vocabulary and merges.
-
-    Args:
-        input_path (str | os.PathLike): Path to BPE tokenizer training data.
-        vocab_size (int): Total number of items in the tokenizer's vocabulary (including special tokens).
-        special_tokens (list[str]): A list of string special tokens to be added to the tokenizer vocabulary.
-            These strings will never be split into multiple tokens, and will always be
-            kept as a single token. If these special tokens occur in the `input_path`,
-            they are treated as any other string.
-
-    Returns:
-        tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
-            vocab:
-                The trained tokenizer vocabulary, a mapping from int (token ID in the vocabulary)
-                to bytes (token bytes)
-            merges:
-                BPE merges. Each list item is a tuple of bytes (<token1>, <token2>),
-                representing that <token1> was merged with <token2>.
-                Merges are ordered by order of creation.
-    """
-    if isinstance(input_path, os.PathLike):
-        input_path = os.fspath(input_path)
-    tokenizer = BPETokenizer(input_path, vocab_size, special_tokens)
-    tokenizer.train()
-    return ({i: tokenizer.vocab[i] for i in range(0, len(tokenizer.vocab))}, tokenizer.merges)
-
 if __name__ == "__main__":
     # cli()
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStories-test.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
     special_tokens = ["<|endoftext|>"]
-    vocab_size = len(special_tokens) + 256 + 10000
+    vocab_size = 10000
     # start bpe tokenizer training
-    tokenizer = BPETokenizer(dataset_path, vocab_size, special_tokens)
-    tokenizer.train()
+    tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens)
+    tokenizer_training.start()
     # store training results: vocab and merges
     # ic(tokenizer.merges)
     # ic(len(tokenizer.merges))
     # ic(tokenizer.vocab[len(special_tokens) + 256:])
     # ic(len(tokenizer.vocab))
+    print(tokenizer_training.merges)
+    print(tokenizer_training.vocab)
     
