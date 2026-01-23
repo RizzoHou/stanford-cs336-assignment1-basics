@@ -56,6 +56,7 @@ class Tokenizer:
         self._init_id_merging_order_map()
         self._init_id_map_by_id_merge()
         if self.special_tokens:
+            self.special_tokens.sort(key=lambda x: -len(x))
             self.split_pattern = f"({'|'.join(map(re.escape, self.special_tokens))})"
             self.compiled_split_pattern = re.compile(self.split_pattern)
         self.div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""

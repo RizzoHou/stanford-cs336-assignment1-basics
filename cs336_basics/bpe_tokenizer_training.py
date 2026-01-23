@@ -65,6 +65,7 @@ class BPETokenizerTraining(TokenizerTraining):
         if special_tokens is None:
             special_tokens = []
         self.special_tokens = special_tokens
+        self.special_tokens.sort(key=lambda x: -len(x))
         self.merges: list[tuple[bytes, bytes]] = []
         self._init_vocab()
         self._init_id_map()
