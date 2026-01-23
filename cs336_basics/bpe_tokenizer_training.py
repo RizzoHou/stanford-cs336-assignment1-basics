@@ -114,78 +114,6 @@ class BPETokenizerTraining(TokenizerTraining):
         for id, tok in enumerate(self.vocab):
             self.id_map[tok] = id
     
-    # def _pretokenize(self) -> None:
-    #     with open(self.dataset_path, "r", encoding="utf-8") as data:
-    #         split_pattern = "|".join(map(re.escape, self.special_tokens))
-    #         corpuses = re.split(split_pattern, data.read())
-    #         div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    #         self.words: list[bytes] = []
-    #         for corpus in corpuses:
-    #             self.words.extend(map(methodcaller("encode", "utf-8"), re.findall(div_pattern, corpus)))
-    def _pretokenize(self) -> None:
-        self.logger.info("Starting pre-tokenization...")
-        self.words: list[bytes] = []
-        mini_chunk_size_mb = 1000
-        mini_chunk_size = 1024 * 1024 * mini_chunk_size_mb
-        self.logger.info(f"mini_chunk_size: 1024 * 1024 * {mini_chunk_size_mb}")
-        cumulative_corpuses_len = 0
-        with open(self.dataset_path, "r", encoding="utf-8") as data:
-            left_part = ""
-            reached_end = False
-            while True:
-                # ic()
-                chunk = data.read(mini_chunk_size)
-                if not chunk and not left_part: break
-                if not chunk: reached_end = True
-                chunk = left_part + chunk
-                # ic(chunk)
-                special_idx = -1
-                selected_special_str = ""
-                for special_token in self.special_tokens:
-                    idx = chunk.rfind(special_token)
-                    if idx > special_idx:
-                        special_idx = idx
-                        selected_special_str = special_token
-                if special_idx != -1:
-                    corpuses = chunk[:special_idx]
-                    left_part = chunk[special_idx + len(selected_special_str):]
-                if special_idx == -1:
-                    if reached_end:
-                        corpuses = chunk
-                        left_part = ""
-                    else:
-                        left_part = chunk
-                        continue
-                # ic(corpuses)
-                # assert corpuses and isinstance(corpuses, str)
-                assert isinstance(corpuses, str)
-                cumulative_corpuses_len += len(corpuses)
-                if not self.special_tokens:
-                    corpuses = [corpuses]
-                else:
-                    corpuses = self.compiled_split_pattern.split(corpuses)
-                for corpus in corpuses:
-                    if not corpus: continue
-                    for word_match in self.compiled_div_pattern.finditer(corpus):
-                        self.words.append(word_match.group().encode("utf-8"))
-                self.logger.info(
-                    f"cumulative_corpuses_len(similar to mb): {cumulative_corpuses_len / 1024 / 1024:.2f}"
-                )
-    
-    def _represent_words_by_linkedlists(self) -> None:
-        self.logger.info(f"Representing {len(self.words)} words as linked lists...")
-        self.id_lists: list[LinkedList] = []
-        reporting_num = 1
-        for i, word in enumerate(self.words):
-            new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, i))
-            for j, byte in enumerate(word[1:]):
-                new_list.append(Node(self.id_map[bytes([byte])], j + 1, i))
-            # ic(len(new_list))
-            self.id_lists.append(new_list)
-            if i + 1 == reporting_num:
-                self.logger.info(f"have represented {i + 1} words as linked lists.")
-                reporting_num *= 10
-    
     def _pretokenize_and_represent_by_linkedlists(self) -> None:
         self.logger.info("Starting pre-tokenization and representation...")
         self.id_lists: list[LinkedList] = []
@@ -260,7 +188,7 @@ class BPETokenizerTraining(TokenizerTraining):
         # self.id_pair_occurrences[id_pair].remove(left_node)
     
     def _first_count_id_pairs(self) -> None:
-        self.logger.info(f"Performing initial pair counting in {len(self.words)} words...")
+        self.logger.info(f"Performing initial pair counting in {len(self.id_lists)} words...")
         self.id_pair_count: dict[tuple[int, int], int] = {}
         self.id_pair_occurrences: dict[tuple[int, int], list[Node]] = {}
         reporting_num = 1
