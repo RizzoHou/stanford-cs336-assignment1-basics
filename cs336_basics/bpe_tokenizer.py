@@ -93,9 +93,12 @@ class Tokenizer:
     ) -> Tokenizer | None:
         pass
     
-    @classmethod
-    def _get_a_linked_list_from_word(cls, word: str) -> LinkedList:
-        ids_list = list(word.encode("utf-8"))
+    # @classmethod
+    def _get_a_linked_list_from_word(self, word: str) -> LinkedList:
+        # ids_list = list(word.encode("utf-8"))
+        ids_list = []
+        for byte in word.encode("utf-8"):
+            ids_list.append(self.id_map[bytes([byte])])
         res = LinkedList(Node(ids_list[0]))
         for id in ids_list[1:]:
             res.append(Node(id))
@@ -134,7 +137,7 @@ class Tokenizer:
 
     def _word_encoding(self, word: str) -> list[int]:
         # transform the word into a linkedlist of ids
-        ids_list = Tokenizer._get_a_linked_list_from_word(word)
+        ids_list = self._get_a_linked_list_from_word(word)
         # try to combine the adjacent ids round by round
         self._merge_adj_ids(ids_list)
         # get the final encoding result by traversing the linkedlist
