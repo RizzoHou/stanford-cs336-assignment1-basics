@@ -31,6 +31,12 @@ zip -r "$output_file" . \
     -x '*.pt' \
     -x '*.pth' \
     -x '*.npy' \
-    -x '*.npz'
+    -x '*.npz' \
+    -x 'data/*' \
+    -x 'venv/*' \
+    -x 'docs/*' \
+    -x '.pytest_cache' \
+    -x 'analysis.txt' \
+    -x 'bpe.prof'
 
 echo "All files have been compressed into $output_file"
