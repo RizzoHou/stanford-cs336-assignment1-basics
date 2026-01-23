@@ -167,7 +167,7 @@ class BPETokenizerTraining(TokenizerTraining):
                             new_list.append(Node(self.id_map[bytes([byte])], j + 1, word_count))
                         self.id_lists.append(new_list)
                 self.logger.info(
-                    f"cumulative_corpuses_len(similar to mb): {cumulative_corpuses_len / 1024 / 1024:.2f}"
+                    f"cumulative_corpuses_len(approximate to MB): {cumulative_corpuses_len / 1024 / 1024:.2f}"
                 )
     
     def _get_max_count(self) -> tuple[int, int] | None:
@@ -301,15 +301,15 @@ if __name__ == "__main__":
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-100mb.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
     # start bpe tokenizer training
     tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
     tokenizer_training.run()
     tokenizer_training.save(
-        "./models/tokenizers/TinyStoriesV2-GPT4-train-vocab.json",
-        "./models/tokenizers/TinyStoriesV2-GPT4-train-merges.txt"
+        "./models/tokenizers/TinyStoriesV2-GPT4-100mb-vocab.json",
+        "./models/tokenizers/TinyStoriesV2-GPT4-100mb-merges.txt"
     )
     # store training results: vocab and merges
     # ic(tokenizer.merges)
