@@ -177,3 +177,7 @@ nohup.out
 
 # testing results
 test_results.xml
+
+# trained models
+models/
+!models/.gitkeep
