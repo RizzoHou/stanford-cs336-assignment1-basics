@@ -1,9 +1,10 @@
-# this version of tokenizer is able to pass test_train_bpe
 from __future__ import annotations
 from abc import ABC, abstractmethod
 import regex as re
 from icecream import ic
 import os
+import logging
+import time
 from operator import methodcaller
 
 class TokenizerTraining(ABC):
@@ -59,9 +60,10 @@ class LinkedList:
         return self.len
 
 class BPETokenizerTraining(TokenizerTraining):
-    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str] | None = None) -> None:
+    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str] | None = None, enable_logging: bool = False) -> None:
         self.dataset_path = dataset_path
         self.vocab_size = vocab_size
+        self.enable_logging = enable_logging
         if special_tokens is None:
             special_tokens = []
         self.special_tokens = special_tokens
@@ -73,6 +75,31 @@ class BPETokenizerTraining(TokenizerTraining):
         self.compiled_split_pattern = re.compile(self.split_pattern)
         self.div_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
         self.compiled_div_pattern = re.compile(self.div_pattern)
+
+    def _setup_logging(self) -> None:
+        """Set up logging with console and file handlers."""
+        if not self.enable_logging:
+            # Create a null logger to avoid AttributeError when accessing self.logger
+            self.logger = logging.getLogger("BPETokenizer")
+            self.logger.addHandler(logging.NullHandler())
+            self.logger.setLevel(logging.WARNING)
+            return
+        
+        self.logger = logging.getLogger("BPETokenizer")
+        self.logger.setLevel(logging.INFO)
+        
+        # Create formatters
+        formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        
+        # Console Handler
+        ch = logging.StreamHandler()
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+        
+        # File Handler (Optional - good for Slurm/AutoDL)
+        fh = logging.FileHandler("tokenizer_training.log")
+        fh.setFormatter(formatter)
+        self.logger.addHandler(fh)
 
     def _init_vocab(self) -> None:
         self.vocab: list[bytes] = []
@@ -206,31 +233,57 @@ class BPETokenizerTraining(TokenizerTraining):
         return (self.vocab[id_pair[0]], self.vocab[id_pair[1]])
     
     def run(self) -> None:
+        self._setup_logging()
+        
+        start_time = time.time()
+        self.logger.info("Starting pre-tokenization...")
         self._pretokenize()
+        
+        self.logger.info(f"Representing {len(self.words)} words as linked lists...")
         self._represent_words_by_linkedlists()
+        
+        self.logger.info("Performing initial pair counting...")
         self._first_count_id_pairs()
-        # print(f"initial vocab size: {len(self.vocab)} / {self.vocab_size}")
+        
+        initial_vocab_size = len(self.vocab)
+        self.logger.info(f"Initial vocab size: {initial_vocab_size}. Target: {self.vocab_size}")
+
+        last_log_time = time.time()
+        
         while len(self.vocab) < self.vocab_size:
-            # get max id_pair_count
             max_id_pair = self._get_max_count()
-            if max_id_pair is None or self.id_pair_count[max_id_pair] == 0: break
-            # ic(max_id_pair)
-            # ic(self._get_merge(max_id_pair))
-            # add the pair into vocab
-            # print(f"new merge: {self._get_merge(max_id_pair)}")
+            if max_id_pair is None or self.id_pair_count[max_id_pair] == 0:
+                self.logger.warning("No more pairs to merge before reaching target vocab size.")
+                break
+            
+            # Log progress every 100 merges
+            current_vocab_size = len(self.vocab)
+            if (current_vocab_size - initial_vocab_size) % 100 == 0:
+                avg_speed = 100 / (time.time() - last_log_time)
+                pair_repr = self._get_merge(max_id_pair)
+                
+                self.logger.info(
+                    f"Vocab: {current_vocab_size}/{self.vocab_size} | "
+                    f"Speed: {avg_speed:.2f} merges/sec | "
+                    f"Merging: {pair_repr}"
+                )
+                last_log_time = time.time()
+
             self._add_to_vocab(max_id_pair)
-            # print(f"updated vocab size: {len(self.vocab)} / {self.vocab_size}")
+
+        total_time = time.time() - start_time
+        self.logger.info(f"Training complete in {total_time/60:.2f} minutes.")
 
 if __name__ == "__main__":
     # cli()
     # dataset_path = "./data/bpe-test.txt"
     # special_tokens = ["<|endoftext|>"]
     # vocab_size = len(special_tokens) + 256 + 100
-    dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
+    dataset_path = "./data/TinyStoriesV2-GPT4-valid.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
     # start bpe tokenizer training
-    tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens)
+    tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
     tokenizer_training.run()
     # store training results: vocab and merges
     # ic(tokenizer.merges)
@@ -239,4 +292,3 @@ if __name__ == "__main__":
     # ic(len(tokenizer.vocab))
     print(tokenizer_training.merges)
     print(tokenizer_training.vocab)
-    
