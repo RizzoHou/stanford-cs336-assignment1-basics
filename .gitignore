@@ -181,7 +181,7 @@ test_results.xml
 # trained models
 models/
 !models/.gitkeep
-!models/tokenizers/
+!models/tokenizers
 
 # my test files
 mp_test.py
