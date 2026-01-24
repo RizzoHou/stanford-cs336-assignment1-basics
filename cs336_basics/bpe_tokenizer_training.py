@@ -5,8 +5,10 @@ from icecream import ic
 import os
 import logging
 import time
-from operator import methodcaller
 import json
+import multiprocessing as mp
+from collections import Counter
+from collections.abc import Iterator
 
 class TokenizerTraining(ABC):
     @abstractmethod
@@ -60,11 +62,38 @@ class LinkedList:
     def __len__(self) -> int:
         return self.len
 
+def _pretokenize_and_count(
+        text: str,
+        compiled_split_pattern: re.Pattern,
+        compiled_div_pattern: re.Pattern
+) -> Counter[bytes]:
+    res: Counter[bytes] = Counter()
+    if not compiled_split_pattern.pattern:
+        corpuses = [text]
+    else:
+        corpuses = compiled_split_pattern.split(text)
+    for corpus in corpuses:
+        for word_match in compiled_div_pattern.finditer(corpus):
+            word = word_match.group().encode("utf-8")
+            res[word] += 1
+    return res
+
+def _on_success(res: Counter[bytes]) -> None:
+    print(f"One job completed with the number of unrepeated words as {len(res)}")
+
+def _on_error(err) -> None:
+    print(f"ONE JOB FAILED WITH ERROR: {err}")
+
 class BPETokenizerTraining(TokenizerTraining):
-    def __init__(self, dataset_path: str, vocab_size: int, special_tokens: list[str] | None = None, enable_logging: bool = False) -> None:
+    def __init__(
+            self, dataset_path: str, vocab_size: int, 
+            special_tokens: list[str] | None = None, 
+            enable_logging: bool = False, proc_num: int = 1
+    ) -> None:
         self.dataset_path = dataset_path
         self.vocab_size = vocab_size
         self.enable_logging = enable_logging
+        self.proc_num = proc_num
         if special_tokens is None:
             special_tokens = []
         self.special_tokens = special_tokens
@@ -122,13 +151,9 @@ class BPETokenizerTraining(TokenizerTraining):
         for i, byte in enumerate(word[1:]):
             new_list.append(Node(self.id_map[bytes([byte])], i + 1, new_word_id))
         self.id_lists.append(new_list)
-    
-    def _pretokenize_and_represent_by_linkedlists(self) -> None:
-        self.logger.info("Starting pre-tokenization and representation...")
-        self.id_lists: list[LinkedList] = []
-        self.word_id_map: dict[bytes, int] = {}
-        self.word_num_map: dict[int, int] = {}
-        mini_chunk_size_mb = 100
+
+    def _chunking_data(self, mini_chunk_size_mb: int) -> Iterator[str]:
+        self.logger.info("Start chunking data...")
         mini_chunk_size = 1024 * 1024 * mini_chunk_size_mb
         self.logger.info(f"mini_chunk_size: 1024 * 1024 * {mini_chunk_size_mb}")
         cumulative_corpuses_len = 0
@@ -159,21 +184,54 @@ class BPETokenizerTraining(TokenizerTraining):
                         continue
                 assert isinstance(corpuses, str)
                 cumulative_corpuses_len += len(corpuses)
-                if not self.special_tokens:
-                    corpuses = [corpuses]
-                else:
-                    corpuses = self.compiled_split_pattern.split(corpuses)
-                for corpus in corpuses:
-                    if not corpus: continue
-                    for word_match in self.compiled_div_pattern.finditer(corpus):
-                        word = word_match.group().encode("utf-8")
-                        if word in self.word_id_map:
-                            self.word_num_map[self.word_id_map[word]] += 1
-                            continue
-                        self._add_word(word)
                 self.logger.info(
                     f"cumulative_corpuses_len(approximate to MB): {cumulative_corpuses_len / 1024 / 1024:.2f}"
                 )
+                yield corpuses
+
+    def _append_to_id_lists(self, word: bytes, word_id: int) -> None:
+        if not word: return
+        new_list = LinkedList(Node(self.id_map[bytes([word[0]])], 0, word_id))
+        for i, byte in enumerate(word[1:]):
+            new_list.append(Node(self.id_map[bytes([byte])], i + 1, word_id))
+        self.id_lists.append(new_list)
+    
+    def _processing_word_counter(self) -> None:
+        self.logger.info(f"Processing word_counter(len: {len(self.word_counter)})...")
+        self.id_lists: list[LinkedList] = []
+        self.word_id_map: dict[bytes, int] = {}
+        self.word_num_map: list[int] = []
+        rep_num = 1
+        for i, item in enumerate(self.word_counter.items()):
+            self.word_id_map[item[0]] = i
+            self.word_num_map.append(item[1])
+            self._append_to_id_lists(item[0], i)
+            if i + 1 == rep_num:
+                self.logger.info(f"Have processed {i + 1} word(s).")
+                rep_num *= 10
+    
+    def _pretokenize_and_represent_by_linkedlists(self) -> None:
+        self.logger.info(f"Starting pre-tokenization and representation with a proc_num of {self.proc_num}...")
+        self.id_lists: list[LinkedList] = []
+        self.word_counter = Counter()
+        mini_chunk_size_mb = 100
+        jobs = []
+        with mp.Pool(self.proc_num) as pool:
+            for corpuses in self._chunking_data(mini_chunk_size_mb):
+                jobs.append(
+                    pool.apply_async(
+                        _pretokenize_and_count, (
+                            corpuses,
+                            self.compiled_split_pattern,
+                            self.compiled_div_pattern
+                        ),
+                        callback=_on_success,
+                        error_callback=_on_error
+                    )
+                )
+            for job in jobs:
+                self.word_counter.update(job.get())
+        self._processing_word_counter()
     
     def _get_max_count(self) -> tuple[int, int] | None:
         cmp = lambda x: (self.id_pair_count[x], self.vocab[x[0]], self.vocab[x[1]])
@@ -231,7 +289,7 @@ class BPETokenizerTraining(TokenizerTraining):
     
     def _get_merge(self, id_pair: tuple[int, int]) -> tuple[bytes, bytes]:
         return (self.vocab[id_pair[0]], self.vocab[id_pair[1]])
-    
+
     def run(self) -> None:
         self._setup_logging()
         start_time = time.time()
@@ -300,12 +358,17 @@ if __name__ == "__main__":
     dataset_path = "./data/TinyStoriesV2-GPT4-train.txt"
     special_tokens = ["<|endoftext|>"]
     vocab_size = 10000
+    proc_num = os.cpu_count()
+    assert proc_num is not None
+    proc_num -= 2
     # start bpe tokenizer training
-    tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens, True)
+    tokenizer_training = BPETokenizerTraining(
+        dataset_path, vocab_size, special_tokens, True, proc_num
+    )
     tokenizer_training.run()
     tokenizer_training.save(
-        "./models/tokenizers/TinyStoriesV2-GPT4-train-vocab.json",
-        "./models/tokenizers/TinyStoriesV2-GPT4-train-merges.txt"
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-vocab-copy.json",
+        "./models/tokenizers/TinyStoriesV2-GPT4-train-merges-copy.txt"
     )
     # store training results: vocab and merges
     # ic(tokenizer_training.merges)
