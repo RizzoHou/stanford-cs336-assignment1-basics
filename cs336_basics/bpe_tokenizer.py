@@ -260,20 +260,21 @@ if __name__ == "__main__":
         vocab_path, merges_path, special_tokens
     )
     # dataset_path = "data/TinyStoriesV2-GPT4-100mb.txt"
-    dataset_path = "data/TinyStoriesV2-GPT4-100mb.txt"
-    save_path = "data/TinyStoriesV2-GPT4-100mb-tokens.bin"
+    dataset_path = "data/TinyStoriesV2-GPT4-train.txt"
+    save_path = "data/TinyStoriesV2-GPT4-train-tokens.bin"
     proc_num = os.cpu_count()
     assert proc_num is not None
-    proc_num -= 2
+    proc_num -= 1
     with open(dataset_path, "rb") as data:
-        text = data.read()
+        data.seek(0, os.SEEK_END)
         data_size = data.tell()
-    # data_size = data_size / 1024 ** 2
-    text = text.decode("utf-8")
-    enc_start = time.perf_counter()
-    encoding_res = tokenizer.encode(text)
-    enc_end = time.perf_counter()
-    enc_time = enc_end - enc_start
+    print(f"data_size: {data_size / 1024**2}MB")
+    # # data_size = data_size / 1024 ** 2
+    # text = text.decode("utf-8")
+    # enc_start = time.perf_counter()
+    # encoding_res = tokenizer.encode(text)
+    # enc_end = time.perf_counter()
+    # enc_time = enc_end - enc_start
     enc_mp_start = time.perf_counter()
     tokenizer.encode_text_file_into_file(
         dataset_path, save_path, proc_num
@@ -284,18 +285,18 @@ if __name__ == "__main__":
         save_path, dtype=np.uint16
     )
     tok_list = list(tok_arr)
-    print(f"encoding results(len: {len(encoding_res)})")
-    print(f"encoding results loaded from binary save (shape: {tok_arr.shape})")
-    print(f"the same? {encoding_res == tok_list}")
-    print(f"encoding time cost: {enc_time:.3f}s")
-    print(f"encoding speed: {data_size / 1024 ** 2 / enc_time:.3f}MB/s")
+    # print(f"encoding results(len: {len(encoding_res)})")
+    print(f"encoding results loaded from binary save(shape: {tok_arr.shape})")
+    # print(f"the same? {encoding_res == tok_list}")
+    # print(f"encoding time cost: {enc_time:.3f}s")
+    # print(f"encoding speed: {data_size / 1024 ** 2 / enc_time:.3f}MB/s")
     print(f"multiprocessing encoding time cost: {enc_mp_time:.3f}s")
     print(f"multiprocessing encoding speed: {data_size / 1024**2 / enc_mp_time:.3f}MB/s")
-    print(f"compression ratio: {data_size / len(encoding_res):.3f}byte/token")
-    dec_start = time.perf_counter()
-    decoding_res = tokenizer.decode(encoding_res)
-    dec_end = time.perf_counter()
-    dec_time = dec_end - dec_start
-    # print(f"decoding results: {decoding_res}")
-    print(f"decoding time cost: {dec_time:.3f}s")
-    print(f"decoding speed: {len(encoding_res) / dec_time:.3f}token/s")
+    print(f"compression ratio: {data_size / tok_arr.shape[0]:.3f}byte/token")
+    # dec_start = time.perf_counter()
+    # decoding_res = tokenizer.decode(encoding_res)
+    # dec_end = time.perf_counter()
+    # dec_time = dec_end - dec_start
+    # # print(f"decoding results: {decoding_res}")
+    # print(f"decoding time cost: {dec_time:.3f}s")
+    # print(f"decoding speed: {len(encoding_res) / dec_time:.3f}token/s")

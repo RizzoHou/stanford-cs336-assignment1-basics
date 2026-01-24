@@ -1,0 +1,10 @@
+encoding results(len: 25475378)
+encoding results loaded from binary save(shape: (25475378,))
+the same? True
+encoding time cost: 61.772s
+encoding speed: 1.619MB/s
+multiprocessing encoding time cost: 16.587s
+multiprocessing encoding speed: 6.029MB/s
+compression ratio: 4.116byte/token
+decoding time cost: 1.544s
+decoding speed: 16504678.699token/s
