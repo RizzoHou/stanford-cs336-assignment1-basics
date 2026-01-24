@@ -2,6 +2,8 @@ from __future__ import annotations
 from icecream import ic
 import regex as re
 from collections.abc import Iterable, Iterator
+import json
+import time
 
 class Node:
     def __init__(self, id: int, pre: Node | None = None, nxt: Node | None = None) -> None:
@@ -92,8 +94,20 @@ class Tokenizer:
         vocab_filepath: str,
         merges_filepath: str,
         special_tokens: list[str] | None = None
-    ) -> Tokenizer | None:
-        pass
+    ) -> Tokenizer:
+        with open(vocab_filepath, "r", encoding="utf-8") as file:
+            saved_vocab = json.load(file)
+        vocab = {
+            id: token.encode("latin-1")
+            for token, id in saved_vocab.items()
+        }
+        with open(merges_filepath, "r", encoding="utf-8") as file:
+            saved_merges = json.load(file)
+        merges = [
+            (part1.encode("latin-1"), part2.encode("latin-1"))
+            for part1, part2 in saved_merges
+        ]
+        return Tokenizer(vocab, merges, special_tokens)
     
     # @classmethod
     def _get_a_linked_list_from_word(self, word: str) -> LinkedList:
@@ -198,22 +212,28 @@ class Tokenizer:
         return b"".join(map(lambda x: self.vocab[x], ids)).decode(encoding="utf-8", errors="replace")
 
 if __name__ == "__main__":
-    from bpe_tokenizer_training import BPETokenizerTraining
-    dataset_path = "./data/bpe-test.txt"
-    # special_tokens = ["<|endoftext|>"]
-    special_tokens = []
-    vocab_size = 10000
-    tokenizer_training = BPETokenizerTraining(dataset_path, vocab_size, special_tokens)
-    tokenizer_training.run()
-    vocab = {i: word for i, word in enumerate(tokenizer_training.vocab)}
-    tokenizer = Tokenizer(vocab, tokenizer_training.merges, special_tokens)
-    with open(dataset_path, "r", encoding="utf-8") as data:
+    special_tokens = ["<|endoftext|>"]
+    vocab_path = "models/tokenizers/TinyStoriesV2-GPT4-train-vocab.json"
+    merges_path = "models/tokenizers/TinyStoriesV2-GPT4-train-merges.txt"
+    tokenizer = Tokenizer.from_files(
+        vocab_path, merges_path, special_tokens
+    )
+    dataset_path = "data/TinyStoriesV2-GPT4-100mb.txt"
+    with open(dataset_path, "rb") as data:
         text = data.read()
-        encoding_res = tokenizer.encode(text)
-        ic(encoding_res)
-        decoding_res = tokenizer.decode(encoding_res)
-        ic(decoding_res)
-        print(decoding_res)
-    with open(dataset_path, "r", encoding="utf-8") as data:
-        for token_id in tokenizer.encode_iterable(data):
-            print(token_id)
+        data_size = data.tell()
+    # data_size = data_size / 1024 ** 2
+    text = text.decode("utf-8")
+    enc_start = time.perf_counter()
+    encoding_res = tokenizer.encode(text)
+    enc_end = time.perf_counter()
+    enc_time = enc_end - enc_start
+    print(f"encoding time cost: {enc_time:.3f}s")
+    print(f"encoding speed: {data_size / 1024 ** 2 / enc_time:.3f} MB/s")
+    print(f"compression ratio: {data_size / len(encoding_res):.3f} byte/token")
+    dec_start = time.perf_counter()
+    decoding_res = tokenizer.decode(encoding_res)
+    dec_end = time.perf_counter()
+    dec_time = dec_end - dec_start
+    print(f"decoding time cost: {dec_time:.3f}s")
+    print(f"decoding speed: {len(encoding_res) / dec_time:.3f} token/s")

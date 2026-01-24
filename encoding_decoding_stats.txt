@@ -1,0 +1,5 @@
+encoding time cost: 62.137s
+encoding speed: 1.609 MB/s
+compression ratio: 4.116 byte/token
+decoding time cost: 1.307s
+decoding speed: 19488426.878 token/s
