@@ -16,3 +16,4 @@ tokenizer_training.save(
     "./models/tokenizers/owt_train-vocab.json",
     "./models/tokenizers/owt_train-merges.txt"
 )
+tokenizer_training.logger.info("Tokenizer training completed.")
