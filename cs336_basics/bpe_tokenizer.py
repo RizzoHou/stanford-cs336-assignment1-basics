@@ -4,6 +4,10 @@ import regex as re
 from collections.abc import Iterable, Iterator
 import json
 import time
+import multiprocessing as mp
+import numpy as np
+from cs336_basics.pretokenization_example import find_chunk_boundaries
+import os
 
 class Node:
     def __init__(self, id: int, pre: Node | None = None, nxt: Node | None = None) -> None:
@@ -43,6 +47,16 @@ class LinkedList:
     
     def __len__(self) -> int:
         return self.len
+
+def _tokenize_chunk(text: str, tokenizer: Tokenizer) -> list[int]:
+    print(f"One worker started tokenizing a chunk with a len of {len(text)}.")
+    return tokenizer.encode(text)
+
+def _on_success(res) -> None:
+    print(f"One worker's job is completed, returning a token list with a len of {len(res)}")
+
+def _on_error(err) -> None:
+    print(f"ONE WORKER FAILED DUE TO {err}")
 
 class Tokenizer:
     def __init__(
@@ -207,6 +221,33 @@ class Tokenizer:
             yield from self._encode_iterable_with_special_tokens(iterable)
         else:
             yield from self._encode_iterable_without_special_tokens(iterable)
+    
+    def encode_text_file_into_file(
+            self, text_path: str, save_path: str, proc_num: int = 1
+    ) -> None:
+        assert self.special_tokens is not None
+        assert len(self.special_tokens) == 1
+        with (
+            open(text_path, "rb") as file, 
+            mp.Pool(proc_num) as pool,
+            open(save_path, "ab") as save
+        ):
+            boundaries = find_chunk_boundaries(
+                file, proc_num, self.special_tokens[0].encode("utf-8")
+            )
+            jobs = []
+            for start, end in zip(boundaries[:-1], boundaries[1:]):
+                file.seek(start)
+                jobs.append(
+                    pool.apply_async(
+                        _tokenize_chunk,
+                        (file.read(end - start).decode("utf-8"), self),
+                        callback=_on_success,
+                        error_callback=_on_error
+                    )
+                )
+            for job in jobs:
+                np.array(job.get(), dtype=np.uint16).tofile(save)
             
     def decode(self, ids: list[int]) -> str:
         return b"".join(map(lambda x: self.vocab[x], ids)).decode(encoding="utf-8", errors="replace")
@@ -218,7 +259,12 @@ if __name__ == "__main__":
     tokenizer = Tokenizer.from_files(
         vocab_path, merges_path, special_tokens
     )
+    # dataset_path = "data/TinyStoriesV2-GPT4-100mb.txt"
     dataset_path = "data/TinyStoriesV2-GPT4-100mb.txt"
+    save_path = "data/TinyStoriesV2-GPT4-100mb-tokens.bin"
+    proc_num = os.cpu_count()
+    assert proc_num is not None
+    proc_num -= 2
     with open(dataset_path, "rb") as data:
         text = data.read()
         data_size = data.tell()
@@ -228,12 +274,28 @@ if __name__ == "__main__":
     encoding_res = tokenizer.encode(text)
     enc_end = time.perf_counter()
     enc_time = enc_end - enc_start
+    enc_mp_start = time.perf_counter()
+    tokenizer.encode_text_file_into_file(
+        dataset_path, save_path, proc_num
+    )
+    enc_mp_end = time.perf_counter()
+    enc_mp_time = enc_mp_end - enc_mp_start
+    tok_arr = np.fromfile(
+        save_path, dtype=np.uint16
+    )
+    tok_list = list(tok_arr)
+    print(f"encoding results(len: {len(encoding_res)})")
+    print(f"encoding results loaded from binary save (shape: {tok_arr.shape})")
+    print(f"the same? {encoding_res == tok_list}")
     print(f"encoding time cost: {enc_time:.3f}s")
-    print(f"encoding speed: {data_size / 1024 ** 2 / enc_time:.3f} MB/s")
-    print(f"compression ratio: {data_size / len(encoding_res):.3f} byte/token")
+    print(f"encoding speed: {data_size / 1024 ** 2 / enc_time:.3f}MB/s")
+    print(f"multiprocessing encoding time cost: {enc_mp_time:.3f}s")
+    print(f"multiprocessing encoding speed: {data_size / 1024**2 / enc_mp_time:.3f}MB/s")
+    print(f"compression ratio: {data_size / len(encoding_res):.3f}byte/token")
     dec_start = time.perf_counter()
     decoding_res = tokenizer.decode(encoding_res)
     dec_end = time.perf_counter()
     dec_time = dec_end - dec_start
+    # print(f"decoding results: {decoding_res}")
     print(f"decoding time cost: {dec_time:.3f}s")
-    print(f"decoding speed: {len(encoding_res) / dec_time:.3f} token/s")
+    print(f"decoding speed: {len(encoding_res) / dec_time:.3f}token/s")
